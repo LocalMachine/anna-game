@@ -17,11 +17,19 @@ export class GameScene extends Phaser.Scene {
 
     shutdown() {
         // Останавливаем всю музыку при завершении сцены
-        this.sound.stopByKey('game_music');
+        if (this.gameMusic) {
+            this.gameMusic.stop();
+            this.gameMusic = null;
+        }
         this.sound.stopByKey('invisibility_sound');
         this.sound.stopByKey('menu_music');
         this.sound.stopByKey('victory_music');
         this.sound.stopByKey('gameover_music');
+        
+        // Останавливаем таймер проверки музыки
+        if (this.musicCheckTimer) {
+            this.musicCheckTimer.destroy();
+        }
         
         // Отписываемся от событий ввода
         this.game.events.off('player-double-tap');
@@ -31,7 +39,6 @@ export class GameScene extends Phaser.Scene {
         this.game.events.off('player-hit');
         this.game.events.off('invincibility-start');
         this.game.events.off('invincibility-end');
-        this.game.events.off('player-double-tap');
         this.game.events.off('chapter-finished');
         
         if (this.inputManager) {
@@ -137,7 +144,9 @@ export class GameScene extends Phaser.Scene {
 
         // Подписка на невидимость — останавливаем игровую музыку, запускаем звук невидимости
         this.game.events.on('invincibility-start', () => {
-            this.sound.stopByKey('game_music');
+            if (this.gameMusic) {
+                this.gameMusic.stop();
+            }
             this.sound.stopByKey('invisibility_sound');
             this.sound.play('invisibility_sound');
         });
@@ -145,7 +154,9 @@ export class GameScene extends Phaser.Scene {
         // Подписка на окончание невидимости — останавливаем звук невидимости, возобновляем игровую музыку
         this.game.events.on('invincibility-end', () => {
             this.sound.stopByKey('invisibility_sound');
-            this.sound.play('game_music');
+            if (this.gameMusic) {
+                this.gameMusic.play();
+            }
         });
 
         // Подписка на двойной тап для активации невидимки
@@ -213,8 +224,22 @@ export class GameScene extends Phaser.Scene {
         this.updateHUD();
         this.updateChapterDisplay();
 
-        // Запускаем игровую музыку
-        this.sound.play('game_music');
+        // Запускаем игровую музыку с loop
+        this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.6 });
+        this.gameMusic.play();
+
+        // Таймер проверки музыки — перезапускает если закончилась
+        this.musicCheckTimer = this.time.addEvent({
+            delay: 2000,
+            callback: () => {
+                if (!this.isRunning) return;
+                if (!this.scoreManager.invincible && this.gameMusic && !this.gameMusic.isPlaying) {
+                    this.gameMusic.play();
+                }
+            },
+            callbackScope: this,
+            repeat: -1
+        });
 
         // Таймер увеличения скорости
         this.speedUpTimer = 0;
@@ -777,8 +802,16 @@ export class GameScene extends Phaser.Scene {
     gameOver() {
         this.isRunning = false;
 
-        // Останавливаем игровую музыку
-        this.sound.stopByKey('game_music');
+        // Останавливаем игровую музыку и таймер проверки
+        if (this.gameMusic) {
+            this.gameMusic.stop();
+        }
+        this.sound.stopByKey('invisibility_sound');
+        if (this.musicCheckTimer) {
+            this.musicCheckTimer.destroy();
+        }
+        this.game.events.off('invincibility-end');
+        this.game.events.off('invincibility-start');
 
         // Сохранение результата
         saveManager.saveRun(
@@ -816,8 +849,16 @@ export class GameScene extends Phaser.Scene {
             this.chapterManager.currentChapter
         );
 
-        // Останавливаем игровую музыку
-        this.sound.stopByKey('game_music');
+        // Останавливаем игровую музыку, таймер проверки и отписываемся от невидимости
+        if (this.gameMusic) {
+            this.gameMusic.stop();
+        }
+        this.sound.stopByKey('invisibility_sound');
+        if (this.musicCheckTimer) {
+            this.musicCheckTimer.destroy();
+        }
+        this.game.events.off('invincibility-end');
+        this.game.events.off('invincibility-start');
 
         // Если дошёл до последней главы — это всегда хорошая концовка!
         const isGoodEnding = true;

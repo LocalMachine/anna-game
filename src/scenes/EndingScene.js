@@ -17,6 +17,10 @@ export class EndingScene extends Phaser.Scene {
     }
 
     create(data) {
+        // Останавливаем игровую музыку и звуки невидимости — они могли остаться после invincibility-end
+        this.sound.stopByKey('game_music');
+        this.sound.stopByKey('invisibility_sound');
+        
         this.isGoodEnding = data.isGoodEnding;
         this.crystals = data.crystals;
         this.score = data.score;
@@ -94,7 +98,7 @@ export class EndingScene extends Phaser.Scene {
             }
         });
 
-                // === Суженый — красивый молодой человек в костюме ===
+        // === Суженый — красивый молодой человек в костюме ===
         const gc = this.make.graphics({ x: 0, y: 0, add: false });
 
         // === ВОЛОСЫ (чёлка, уложенные) ===
@@ -272,9 +276,9 @@ export class EndingScene extends Phaser.Scene {
         carBody.fillStyle(0x757575);
         carBody.fillCircle(840, 530, 10);
         carBody.fillCircle(960, 530, 10);
-        carBody.fillStyle(0xFFD54F);
-        carBody.fillCircle(800, 500, 8);
         carBody.fillStyle(0xFF5722);
+        carBody.fillCircle(800, 500, 8);
+        carBody.fillStyle(0xFFD54F);
         carBody.fillCircle(1000, 500, 8);
         carBody.setAlpha(0);
         carGroup.add(carBody);
@@ -329,22 +333,92 @@ export class EndingScene extends Phaser.Scene {
                 ease: 'Power2'
             });
 
-            // Машина уезжает — анимируем каждый объект внутри группы отдельно
+            // ============================================================
+            // === ЛОГИКА ДВИЖЕНИЯ МАШИНЫ ==================================
+            // ============================================================
+            // Машина нарисована через graphics с внутренними координатами:
+            //   левый край  ≈ 800
+            //   правый край ≈ 1000
+            // child.x у графиков изначально = 0.
+            // Значит мировой левый край  = firstChild.x + 800
+            //       мировой правый край = firstChild.x + 1000
+            // Сдвигаем все graphics на одинаковую delta через child.x.
+            // ============================================================
+
+            let carLoopActive = true;
+
             const carChildren = carGroup.getChildren();
-            carChildren.forEach(child => {
-                this.tweens.add({
-                    targets: child,
-                    x: 1600,
-                    duration: 12000,
-                    ease: 'Power2'
+            const firstChild = carChildren[0];
+
+            const CAR_TRIP_DURATION = 12000;   // длительность поездки через экран
+            const CAR_PAUSE = 2000;            // пауза за экраном
+            const LEFT_OFFSCREEN = -300;       // левый край всей машины за экраном
+            const RIGHT_OFFSCREEN = 1600;      // правый край всей машины за экраном
+
+            const CAR_INNER_LEFT = 800;        // левый край машины внутри graphics
+            const CAR_INNER_RIGHT = 1000;      // правый край машины внутри graphics
+
+            // Сдвинуть всю группу так, чтобы её левый край оказался в targetLeft
+            const setGroupLeft = (targetLeft) => {
+                const currentLeft = firstChild.x + CAR_INNER_LEFT;
+                const dx = targetLeft - currentLeft;
+                carChildren.forEach(child => { child.x += dx; });
+            };
+
+            // Едем всей группой вправо на расстояние dx
+            const driveRight = (dx, onDone) => {
+                if (dx <= 0) {
+                    if (onDone) onDone();
+                    return;
+                }
+                let completed = 0;
+                carChildren.forEach(child => {
+                    this.tweens.add({
+                        targets: child,
+                        x: child.x + dx,
+                        duration: CAR_TRIP_DURATION,
+                        ease: 'Power2',
+                        onComplete: () => {
+                            completed++;
+                            if (completed === carChildren.length && onDone) onDone();
+                        }
+                    });
+                });
+            };
+
+            // Проехать слева направо: телепорт за левый край, движение вправо за экран
+            const driveLeftToRight = () => {
+                if (!carLoopActive) return;
+
+                // Ставим всю машину за левым краем экрана
+                setGroupLeft(LEFT_OFFSCREEN);
+
+                // Считаем dx так, чтобы правый край ушёл за RIGHT_OFFSCREEN
+                const currentRight = firstChild.x + CAR_INNER_RIGHT;
+                const dx = RIGHT_OFFSCREEN - currentRight;
+
+                driveRight(dx, () => {
+                    if (!carLoopActive) return;
+                    this.time.delayedCall(CAR_PAUSE, () => {
+                        if (carLoopActive) driveLeftToRight();
+                    });
+                });
+            };
+
+            // === ПЕРВАЯ ПОЕЗДКА ===
+            // Машина стоит в середине (child.x = 0, мировой правый край = 1000).
+            // Едем вправо так, чтобы правый край ушёл за RIGHT_OFFSCREEN.
+            const firstRight = firstChild.x + CAR_INNER_RIGHT;
+            const firstDx = RIGHT_OFFSCREEN - firstRight;
+
+            driveRight(firstDx, () => {
+                if (!carLoopActive) return;
+                this.time.delayedCall(CAR_PAUSE, () => {
+                    if (carLoopActive) driveLeftToRight();
                 });
             });
 
-            // Уничтожаем группу после анимации
-            this.time.delayedCall(13000, () => {
-                carGroup.destroy();
-            });
-
+            // === Тексты и кнопка ===
             const text5 = this.add.text(640, 500, 'Их история только начиналась...', {
                 fontSize: `${text1Size}px`, fontFamily: 'Georgia, serif', color: '#FFD54F',
                 stroke: '#000000', strokeThickness: 4
@@ -359,7 +433,11 @@ export class EndingScene extends Phaser.Scene {
             this.tweens.add({ targets: finalText, alpha: 1, duration: 2000, delay: 14000 });
 
             this.time.delayedCall(16000, () => {
-                this.createButton(640, 680, 'В МЕНЮ', buttonSize, () => {
+                this.createButton(640, 650, 'В МЕНЮ', buttonSize, () => {
+                    // Останавливаем бесконечную анимацию машины
+                    carLoopActive = false;
+                    if (carGroup) carGroup.destroy();
+                    
                     // Останавливаем музыку концовки
                     this.sound.stopByKey('victory_music');
                     // Останавливаем игровую музыку ПЕРЕД остановкой сцены
