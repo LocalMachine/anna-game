@@ -124,8 +124,12 @@ export class GameScene extends Phaser.Scene {
         // Подписка на невидимость
         this.game.events.on('invincibility-start', () => {
             console.log('✨ Режим невидимости активирован!');
-            // Останавливаем игровую музыку и включаем звук невидимости
-            this.sound.stopByKey('game_music');
+            // Приостанавливаем игровую музыку и включаем звук невидимости
+            const gameMusic = this.sound.get('game_music');
+            if (gameMusic && gameMusic.isPlaying) {
+                this.musicPausedPosition = gameMusic.position; // Сохраняем позицию
+                gameMusic.pause();
+            }
             this.invisibilityMusic = this.sound.add('invisibility_sound', { loop: true, volume: 0.4 });
             this.invisibilityMusic.play();
         });
@@ -138,7 +142,15 @@ export class GameScene extends Phaser.Scene {
                 this.invisibilityMusic.stop();
                 this.invisibilityMusic = null;
             }
-            this.sound.play('game_music');
+            const gameMusic = this.sound.get('game_music');
+            if (gameMusic) {
+                // Восстанавливаем музыку с сохранённой позиции
+                if (this.musicPausedPosition) {
+                    gameMusic.seek(this.musicPausedPosition);
+                    this.musicPausedPosition = null;
+                }
+                gameMusic.resume();
+            }
         });
 
         // Подписка на двойной тап для активации невидимки
@@ -776,6 +788,9 @@ export class GameScene extends Phaser.Scene {
     gameOver() {
         this.isRunning = false;
 
+        // Останавливаем игровую музыку
+        this.sound.stopByKey('game_music');
+
         // Сохранение результата
         saveManager.saveRun(
             this.scoreManager.crystals,
@@ -811,6 +826,9 @@ export class GameScene extends Phaser.Scene {
             this.scoreManager.score,
             this.chapterManager.currentChapter
         );
+
+        // Останавливаем игровую музыку
+        this.sound.stopByKey('game_music');
 
         // Если дошёл до последней главы — это всегда хорошая концовка!
         const isGoodEnding = true;
