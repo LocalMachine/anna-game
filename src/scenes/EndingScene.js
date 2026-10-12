@@ -3,6 +3,8 @@
  * Хорошая: Анна и суженый уезжают в BMW кабриолете в закат
  * Плохая: Анна возвращается на скучный бал
  */
+import { getAdaptiveFontSize, getAdaptiveButtonSize, isMobile } from '../utils/adaptive.js';
+
 export class EndingScene extends Phaser.Scene {
     constructor() {
         super({ key: 'EndingScene' });
@@ -19,6 +21,9 @@ export class EndingScene extends Phaser.Scene {
         this.crystals = data.crystals;
         this.score = data.score;
         this.chapter = data.chapter;
+
+        // Адаптивные размеры для мобильных
+        this.isMobileDevice = isMobile();
 
         if (this.isGoodEnding) {
             this.showGoodEnding();
@@ -58,9 +63,14 @@ export class EndingScene extends Phaser.Scene {
         sky.fillCircle(250, 140, 50);
         sky.fillCircle(300, 150, 60);
 
+        // Адаптивные размеры
+        const titleSize = getAdaptiveFontSize(44);
+        const text1Size = getAdaptiveFontSize(26);
+        const buttonSize = getAdaptiveButtonSize(350, 60);
+
         // === Заголовок ===
         const titleText = this.add.text(640, 120, 'Игра пройдена!', {
-            fontSize: '56px', fontFamily: 'Georgia, serif', color: '#FFFFFF',
+            fontSize: `${titleSize}px`, fontFamily: 'Georgia, serif', color: '#FFFFFF',
             fontStyle: 'bold', stroke: '#000000', strokeThickness: 6
         }).setOrigin(0.5).setAlpha(0);
 
@@ -72,7 +82,7 @@ export class EndingScene extends Phaser.Scene {
         this.tweens.add({ targets: annaSprite, alpha: 1, duration: 1000, delay: 5000 });
 
         const text1 = this.add.text(640, 220, 'Анна встретила своего суженого', {
-            fontSize: '32px', fontFamily: 'Georgia, serif', color: '#FFFFFF',
+            fontSize: `${text1Size}px`, fontFamily: 'Georgia, serif', color: '#FFFFFF',
             stroke: '#000000', strokeThickness: 4
         }).setOrigin(0.5).setAlpha(0);
         this.tweens.add({
@@ -194,8 +204,9 @@ export class EndingScene extends Phaser.Scene {
         groomSprite.setAlpha(0);
         this.tweens.add({ targets: groomSprite, alpha: 1, duration: 1000, delay: 7000 });
 
+        const text2Size = getAdaptiveFontSize(26);
         const text2 = this.add.text(640, 300, 'Они подходят друг к другу', {
-            fontSize: '28px', fontFamily: 'Georgia, serif', color: '#FFFFFF',
+            fontSize: `${text2Size}px`, fontFamily: 'Georgia, serif', color: '#FFFFFF',
             stroke: '#000000', strokeThickness: 4
         }).setOrigin(0.5).setAlpha(0);
         this.tweens.add({
@@ -211,8 +222,9 @@ export class EndingScene extends Phaser.Scene {
         this.tweens.add({ targets: annaSprite, x: 600, duration: 2000, delay: 9000, ease: 'Power2' });
         this.tweens.add({ targets: groomSprite, x: 680, duration: 2000, delay: 9000, ease: 'Power2' });
 
+        const text3Size = getAdaptiveFontSize(28);
         const text3 = this.add.text(640, 380, 'Обнимаются...', {
-            fontSize: '30px', fontFamily: 'Georgia, serif', color: '#FFD54F',
+            fontSize: `${text3Size}px`, fontFamily: 'Georgia, serif', color: '#FFD54F',
             stroke: '#000000', strokeThickness: 4
         }).setOrigin(0.5).setAlpha(0);
         this.tweens.add({
@@ -225,9 +237,10 @@ export class EndingScene extends Phaser.Scene {
         });
 
         // === Сердечки (исчезают) ===
+        const heartSize = getAdaptiveFontSize(28);
         this.time.delayedCall(11500, () => {
             for (let i = 0; i < 5; i++) {
-                const heart = this.add.text(640, 350, '❤️', { fontSize: '30px' }).setAlpha(0);
+                const heart = this.add.text(640, 350, '❤️', { fontSize: `${heartSize}px` }).setAlpha(0);
                 hearts.push(heart);
                 this.tweens.add({
                     targets: heart, x: 640 + (Math.random() - 0.5) * 100,
@@ -281,8 +294,9 @@ export class EndingScene extends Phaser.Scene {
 
         this.tweens.add({ targets: carGroup.getChildren(), alpha: 1, duration: 1000, delay: 12000 });
 
+        const text4Size = getAdaptiveFontSize(26);
         const text4 = this.add.text(640, 440, 'Запрыгивают в машину и уезжают в счастливую жизнь', {
-            fontSize: '28px', fontFamily: 'Georgia, serif', color: '#FFFFFF',
+            fontSize: `${text4Size}px`, fontFamily: 'Georgia, serif', color: '#FFFFFF',
             stroke: '#000000', strokeThickness: 4
         }).setOrigin(0.5).setAlpha(0);
         this.tweens.add({
@@ -332,19 +346,20 @@ export class EndingScene extends Phaser.Scene {
             });
 
             const text5 = this.add.text(640, 500, 'Их история только начиналась...', {
-                fontSize: '32px', fontFamily: 'Georgia, serif', color: '#FFD54F',
+                fontSize: `${text1Size}px`, fontFamily: 'Georgia, serif', color: '#FFD54F',
                 stroke: '#000000', strokeThickness: 4
             }).setOrigin(0.5).setAlpha(0);
             this.tweens.add({ targets: text5, alpha: 1, duration: 1500, delay: 11000 });
 
+            const finalTextSize = getAdaptiveFontSize(this.isMobileDevice ? 32 : 48);
             const finalText = this.add.text(640, 580, '✨ КОНЕЦ ✨', {
-                fontSize: '48px', fontFamily: 'Georgia, serif', color: '#FFFFFF',
+                fontSize: `${finalTextSize}px`, fontFamily: 'Georgia, serif', color: '#FFFFFF',
                 fontStyle: 'bold', stroke: '#000000', strokeThickness: 6
             }).setOrigin(0.5).setAlpha(0);
             this.tweens.add({ targets: finalText, alpha: 1, duration: 2000, delay: 14000 });
 
             this.time.delayedCall(16000, () => {
-                this.createButton(640, 680, 'В МЕНЮ', () => {
+                this.createButton(640, 680, 'В МЕНЮ', buttonSize, () => {
                     // Останавливаем музыку концовки
                     this.sound.stopByKey('victory_music');
                     // Останавливаем игровую музыку ПЕРЕД остановкой сцены
@@ -574,6 +589,11 @@ export class EndingScene extends Phaser.Scene {
         king.fillStyle(0xFFFF00, 0.6);
         king.fillCircle(685, 275, 5);
         
+        // Адаптивные размеры
+        const badTitleSize = getAdaptiveFontSize(34);
+        const dialogueSize = getAdaptiveFontSize(20);
+        const buttonSize = getAdaptiveButtonSize(350, 60);
+
         // === АННА ВХОДИТ В ЗАЛ ===
         const anna = this.add.sprite(200, 500, 'anna').setScale(1.5);
         anna.setAlpha(0);
@@ -593,12 +613,12 @@ export class EndingScene extends Phaser.Scene {
         const dialogues = [
             { text: 'Анна входит в зал...', startDelay: 1200, duration: 500, hide: true },
             { text: 'Король ждёт её с трона', startDelay: 2500, duration: 400, hide: true },
-            { text: '«Очередной скучный бал...»', startDelay: 5500, duration: 800, hide: true },
+            { text: '«Очередной скучный бал...»', startDelay: 4500, duration: 800, hide: true },
         ];
         
         dialogues.forEach((d) => {
             const label = this.add.text(640, 560, d.text, {
-                fontSize: '26px',
+                fontSize: `${dialogueSize}px`,
                 fontFamily: 'Georgia, serif',
                 color: '#FFFFFF',
                 stroke: '#000000',
@@ -629,7 +649,7 @@ export class EndingScene extends Phaser.Scene {
         
         // === КНОПКА ===
         this.time.delayedCall(7000, () => {
-            this.createButton(640, 650, 'В МЕНЮ', () => {
+            this.createButton(640, 650, 'В МЕНЮ', buttonSize, () => {
                 // Останавливаем музыку проигрыша
                 this.sound.stopByKey('gameover_music');
                 // Останавливаем игровую музыку ПЕРЕД остановкой сцены
@@ -649,10 +669,12 @@ export class EndingScene extends Phaser.Scene {
         });
     }
 
-    createButton(x, y, text, callback) {
-        const bg = this.add.rectangle(x, y, 350, 60, 0xFF7043).setInteractive({ useHandCursor: true });
+    createButton(x, y, text, size, callback) {
+        const bgSize = size || { width: 350, height: 60 };
+        const bg = this.add.rectangle(x, y, bgSize.width, bgSize.height, 0xFF7043).setInteractive({ useHandCursor: true });
+        const labelSize = getAdaptiveFontSize(bgSize.height * 0.4);
         const label = this.add.text(x, y, text, {
-            fontSize: '24px', fontFamily: 'Georgia, serif', color: '#FFFFFF', fontStyle: 'bold'
+            fontSize: `${labelSize}px`, fontFamily: 'Georgia, serif', color: '#FFFFFF', fontStyle: 'bold'
         }).setOrigin(0.5);
 
         bg.on('pointerover', () => bg.setFillStyle(0xFF8A65));

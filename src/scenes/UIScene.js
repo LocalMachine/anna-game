@@ -1,6 +1,8 @@
 /**
  * HUD — отображение жизней, кристаллов, очков, шкалы свободы
  */
+import { getAdaptiveFontSize, isMobile } from '../utils/adaptive.js';
+
 export class UIScene extends Phaser.Scene {
     constructor() {
         super({ key: 'UIScene' });
@@ -27,6 +29,9 @@ export class UIScene extends Phaser.Scene {
         this.pauseMenuBtn = null;
         this.isPaused = false;
 
+        // Адаптивные размеры для мобильных
+        this.isMobileDevice = isMobile();
+
         this.drawHUD();
         this.createSettingsButton();
 
@@ -37,53 +42,64 @@ export class UIScene extends Phaser.Scene {
     }
 
     drawHUD() {
+        // Адаптивные размеры
+        const hudHeight = this.isMobileDevice ? 46 : 62;
+        const livesSize = getAdaptiveFontSize(this.isMobileDevice ? 20 : 30);
+        const crystalSize = getAdaptiveFontSize(this.isMobileDevice ? 18 : 26);
+        const scoreSize = getAdaptiveFontSize(this.isMobileDevice ? 18 : 26);
+        const chapterSize = getAdaptiveFontSize(this.isMobileDevice ? 16 : 24);
+        const invincibleSize = getAdaptiveFontSize(this.isMobileDevice ? 20 : 30);
+        const chapterTitleSize = getAdaptiveFontSize(this.isMobileDevice ? 18 : 26);
+
         // Фон HUD (верхняя панель)
         this.hudBg = this.add.graphics();
         this.hudBg.fillStyle(0x1E1E2E, 0.85);
-        this.hudBg.fillRect(0, 0, 1280, 60);
+        this.hudBg.fillRect(0, 0, 1280, hudHeight);
 
         // Жизни (сердечки)
-        this.livesLabel = this.add.text(20, 12, '❤️ ❤️ ❤️', {
-            fontSize: '28px',
+        this.livesLabel = this.add.text(20, 8, '❤️ ❤️ ❤️', {
+            fontSize: `${livesSize}px`,
             fontFamily: 'Georgia, serif'
         });
 
         // Кристаллы
-        this.crystalsLabel = this.add.text(200, 12, '💎 0', {
-            fontSize: '24px',
+        this.crystalsLabel = this.add.text(200, 8, '💎 0', {
+            fontSize: `${crystalSize}px`,
             fontFamily: 'Georgia, serif',
             color: '#FFD54F'
         });
 
         // Очки
-        this.scoreLabel = this.add.text(450, 12, 'Очки: 0', {
-            fontSize: '24px',
+        this.scoreLabel = this.add.text(450, 8, 'Очки: 0', {
+            fontSize: `${scoreSize}px`,
             fontFamily: 'Georgia, serif',
             color: '#FFFFFF'
         });
 
         // Шкала главы (правая сторона)
         this.chapterBar = this.add.graphics();
-        this.chapterLabel = this.add.text(950, 14, 'Глава:', {
-            fontSize: '20px',
+        const chapterX = this.isMobileDevice ? 880 : 950;
+        const chapterNumberX = this.isMobileDevice ? 970 : 1020;
+        this.chapterLabel = this.add.text(chapterX, 10, 'Глава:', {
+            fontSize: `${chapterSize}px`,
             fontFamily: 'Georgia, serif',
             color: '#B39DDB'
         });
         
         // Номер текущей главы
-        this.chapterNumberLabel = this.add.text(1020, 14, '1', {
-            fontSize: '20px',
+        this.chapterNumberLabel = this.add.text(chapterNumberX, 10, ' 1', {
+            fontSize: `${chapterSize}px`,
             fontFamily: 'Georgia, serif',
             color: '#FFFFFF',
             fontStyle: 'bold'
         });
         
         // Устанавливаем начальное значение
-        this.chapterNumberLabel.text = '1';
+        this.chapterNumberLabel.text = ' 1';
 
         // Индикатор невидимости
         this.invincibleIndicator = this.add.text(640, 80, '', {
-            fontSize: '28px',
+            fontSize: `${invincibleSize}px`,
             fontFamily: 'Georgia, serif',
             color: '#B39DDB',
             fontStyle: 'bold'
@@ -91,7 +107,7 @@ export class UIScene extends Phaser.Scene {
 
         // Название главы (центр сверху)
         this.chapterLabel = this.add.text(640, 30, '', {
-            fontSize: '20px',
+            fontSize: `${chapterTitleSize}px`,
             fontFamily: 'Georgia, serif',
             color: '#FFFFFF',
             fontStyle: 'italic'
@@ -100,8 +116,9 @@ export class UIScene extends Phaser.Scene {
 
     createSettingsButton() {
         // Кнопка настроек (шестерёнка)
+        const settingsSize = getAdaptiveFontSize(28);
         this.settingsBtn = this.add.text(1240, 30, '⚙️', {
-            fontSize: '32px',
+            fontSize: `${settingsSize}px`,
             fontFamily: 'Georgia, serif'
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
@@ -137,14 +154,14 @@ export class UIScene extends Phaser.Scene {
 
         // Заголовок
         this.pauseTitle = this.add.text(640, 240, 'Пауза', {
-            fontSize: '48px',
+            fontSize: `${getAdaptiveFontSize(40)}px`,
             fontFamily: 'Georgia, serif',
             color: '#FFFFFF'
         }).setOrigin(0.5).setDepth(102);
 
         // Кнопка "Продолжить"
         this.pauseContinueBtn = this.add.text(640, 330, '▶️ Продолжить', {
-            fontSize: '32px',
+            fontSize: `${getAdaptiveFontSize(28)}px`,
             fontFamily: 'Georgia, serif',
             color: '#4CAF50'
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(102);
@@ -162,7 +179,7 @@ export class UIScene extends Phaser.Scene {
         });
         // Кнопка "Вернуться в меню"
         this.pauseMenuBtn = this.add.text(640, 430, '🏠 Вернуться в меню', {
-            fontSize: '32px',
+            fontSize: `${getAdaptiveFontSize(28)}px`,
             fontFamily: 'Georgia, serif',
             color: '#FF5722'
         }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(102);
@@ -256,7 +273,7 @@ export class UIScene extends Phaser.Scene {
         
         // Обновляем номер главы
         if (data.chapterIndex) {
-            this.chapterNumberLabel.text = data.chapterIndex;
+            this.chapterNumberLabel.text = ` ${data.chapterIndex}`;
         }
 
         // Индикатор невидимости
@@ -269,7 +286,7 @@ export class UIScene extends Phaser.Scene {
 
         // Название главы
         if (data.chapterName) {
-            this.chapterLabel.text = `Глава ${data.chapterIndex}: ${data.chapterName}`;
+            this.chapterLabel.text = `Глава: ${data.chapterIndex} - ${data.chapterName}`;
             this.chapterLabel.setAlpha(1);
 
             this.time.delayedCall(3000, () => {

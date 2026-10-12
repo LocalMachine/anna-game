@@ -23,7 +23,10 @@ const CONFIG = {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
         width: 1280,
-        height: 720
+        height: 720,
+        // Адаптация под мобильные устройства
+        expandParent: true,
+        roundPixels: 1
     },
     render: {
         antialias: true,
@@ -47,3 +50,23 @@ scoreManager.game = game;
 chapterManager = new ChapterManager();
 chapterManager.game = game;
 saveManager = new SaveManager();
+
+// Проверка ориентации устройства
+function checkOrientation() {
+    const warning = document.getElementById('orientation-warning');
+    const isMobileDevice = window.innerWidth <= 768;
+    
+    if (isMobileDevice && window.innerHeight > window.innerWidth) {
+        // Вертикальная ориентация на мобильном
+        warning.classList.add('show');
+    } else {
+        warning.classList.remove('show');
+    }
+}
+
+// Проверяем при загрузке и при изменении размера
+window.addEventListener('load', checkOrientation);
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', () => {
+    setTimeout(checkOrientation, 100); // Небольшая задержка для стабилизации
+});

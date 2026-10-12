@@ -2,6 +2,7 @@
  * Главное меню
  */
 import { scoreManager, chapterManager, saveManager } from '../main.js';
+import { getAdaptiveFontSize, getAdaptiveButtonSize, isMobile } from '../utils/adaptive.js';
 
 export class MenuScene extends Phaser.Scene {
     constructor() {
@@ -48,17 +49,24 @@ export class MenuScene extends Phaser.Scene {
             });
         }
 
+        // Адаптивные размеры
+        const titleSize = getAdaptiveFontSize(52);
+        const subtitleSize = getAdaptiveFontSize(34);
+        const buttonSize = getAdaptiveButtonSize(300, 70);
+        const infoSize = getAdaptiveFontSize(20);
+        const controlsSize = getAdaptiveFontSize(16);
+
         this.add.text(640, 150, 'Анна', {
-            fontSize: '72px', fontFamily: 'Georgia, serif',
+            fontSize: `${titleSize}px`, fontFamily: 'Georgia, serif',
             color: '#5D4037', fontStyle: 'bold'
         }).setOrigin(0.5);
 
         this.add.text(640, 230, 'Сердце в бегах', {
-            fontSize: '48px', fontFamily: 'Georgia, serif',
+            fontSize: `${subtitleSize}px`, fontFamily: 'Georgia, serif',
             color: '#FF7043', fontStyle: 'italic'
         }).setOrigin(0.5);
 
-        this.createButton(640, 380, 'ИГРАТЬ', () => {
+        this.createButton(640, 380, 'ИГРАТЬ', buttonSize, () => {
             this.startGame();
         });
 
@@ -67,19 +75,19 @@ export class MenuScene extends Phaser.Scene {
         const bestChapter = chapterManager.chaptersUnlocked - 1;
 
         this.add.text(640, 500, `Рекорд: ${highScore}`, {
-            fontSize: '24px', fontFamily: 'Georgia, serif', color: '#5D4037'
+            fontSize: `${infoSize}px`, fontFamily: 'Georgia, serif', color: '#5D4037'
         }).setOrigin(0.5);
 
         this.add.text(640, 535, `Всего кристаллов: ${totalCrystals}`, {
-            fontSize: '24px', fontFamily: 'Georgia, serif', color: '#5D4037'
+            fontSize: `${infoSize}px`, fontFamily: 'Georgia, serif', color: '#5D4037'
         }).setOrigin(0.5);
 
         this.add.text(640, 570, `Достигнуто глав: ${bestChapter + 1}/5`, {
-            fontSize: '24px', fontFamily: 'Georgia, serif', color: '#5D4037'
+            fontSize: `${infoSize}px`, fontFamily: 'Georgia, serif', color: '#5D4037'
         }).setOrigin(0.5);
 
         this.add.text(640, 660, 'Пробел / Свайп ↑ — Прыжок  |  ↓ — Подкат  |  Shift / Двойной Тап — Невидимка (50 💎)', {
-            fontSize: '18px', fontFamily: 'Georgia, serif', color: '#78909C'
+            fontSize: `${controlsSize}px`, fontFamily: 'Georgia, serif', color: '#78909C'
         }).setOrigin(0.5);
 
         this.input.keyboard.on('keydown-SPACE', () => this.startGame());
@@ -94,10 +102,11 @@ export class MenuScene extends Phaser.Scene {
         this.gameMusic = null;
     }
 
-    createButton(x, y, text, callback) {
-        const bg = this.add.rectangle(x, y, 300, 70, 0xFF7043).setInteractive({ useHandCursor: true });
+    createButton(x, y, text, size, callback) {
+        const bg = this.add.rectangle(x, y, size.width, size.height, 0xFF7043).setInteractive({ useHandCursor: true });
+        const labelSize = getAdaptiveFontSize(size.height * 0.45);
         const label = this.add.text(x, y, text, {
-            fontSize: '32px', fontFamily: 'Georgia, serif',
+            fontSize: `${labelSize}px`, fontFamily: 'Georgia, serif',
             color: '#FFFFFF', fontStyle: 'bold'
         }).setOrigin(0.5);
 
@@ -113,9 +122,9 @@ export class MenuScene extends Phaser.Scene {
         // Останавливаем музыку меню
         this.sound.stopByKey('menu_music');
         
-        // Запускаем игровую музыку
-        this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.6 });
-        this.gameMusic.play();
+        // НЕ запускаем игровую музыку здесь — она запустится в GameScene
+        // this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.6 });
+        // this.gameMusic.play();
         
         scoreManager.reset();
         chapterManager.reset();

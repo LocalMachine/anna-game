@@ -8,6 +8,7 @@ import { Knight } from '../entities/Obstacles/Knight.js';
 import { Mage } from '../entities/Obstacles/Mage.js';
 import { Ninja } from '../entities/Obstacles/Ninja.js';
 import { Crystal } from '../entities/Collectibles/Crystal.js';
+import { getAdaptiveFontSize, isMobile } from '../utils/adaptive.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -20,6 +21,17 @@ export class GameScene extends Phaser.Scene {
         // Останавливаем всю музыку при завершении сцены
         this.sound.stopByKey('game_music');
         this.sound.stopByKey('invisibility_sound');
+        
+        // Отписываемся от событий ввода
+        this.game.events.off('player-double-tap');
+        this.game.events.off('player-jump');
+        this.game.events.off('player-slide');
+        this.game.events.off('crystal-collected');
+        this.game.events.off('player-hit');
+        this.game.events.off('invincibility-start');
+        this.game.events.off('invincibility-end');
+        this.game.events.off('player-double-tap');
+        this.game.events.off('chapter-finished');
         
         if (this.inputManager) {
             this.inputManager.destroy();
@@ -79,6 +91,9 @@ export class GameScene extends Phaser.Scene {
         this.chapterManager = chapterManager;
         this.inputManager = inputManager;
 
+        // Адаптивные размеры для мобильных
+        this.isMobileDevice = isMobile();
+
         // 5. Setup ground (земля ДО создания Анны)
         this.setupGround();
 
@@ -105,11 +120,9 @@ export class GameScene extends Phaser.Scene {
 
         // Подписка на события ввода
         this.game.events.on('player-jump', () => {
-            console.log('🦘 player-jump event received');
             this.anna.jump();
         });
         this.game.events.on('player-slide', () => {
-            console.log('🛝 player-slide event received, anna:', this.anna);
             this.anna.slide();
         });
 
@@ -123,15 +136,22 @@ export class GameScene extends Phaser.Scene {
 
         // Подписка на невидимость
         this.game.events.on('invincibility-start', () => {
-            console.log('✨ Режим невидимости активирован!');
-            // Приостанавливаем игровую музыку и включаем звук невидимости
-            const gameMusic = this.sound.get('game_music');
-            if (gameMusic && gameMusic.isPlaying) {
-                this.musicPausedPosition = gameMusic.position; // Сохраняем позицию
-                gameMusic.pause();
+            if (this.gameMusic && this.gameMusic.isPlaying) {
+                this.gameMusic.stop();
             }
             this.invisibilityMusic = this.sound.add('invisibility_sound', { loop: true, volume: 0.4 });
             this.invisibilityMusic.play();
+        });
+        
+        this.game.events.on('invincibility-end', () => {
+            if (this.invisibilityMusic) {
+                this.invisibilityMusic.stop();
+                this.invisibilityMusic = null;
+            }
+            if (!this.gameMusic || !this.gameMusic.isPlaying) {
+                this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.6 });
+                this.gameMusic.play();
+            }
         });
         
         // Подписка на окончание невидимости
@@ -142,33 +162,26 @@ export class GameScene extends Phaser.Scene {
                 this.invisibilityMusic.stop();
                 this.invisibilityMusic = null;
             }
-            const gameMusic = this.sound.get('game_music');
-            if (gameMusic) {
-                // Восстанавливаем музыку с сохранённой позиции
-                if (this.musicPausedPosition) {
-                    gameMusic.seek(this.musicPausedPosition);
-                    this.musicPausedPosition = null;
-                }
-                gameMusic.resume();
+            if (!this.gameMusic || !this.gameMusic.isPlaying) {
+                this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.6 });
+                this.gameMusic.play();
             }
         });
 
         // Подписка на двойной тап для активации невидимки
         this.game.events.on('player-double-tap', () => {
-            console.log('👻 player-double-tap received, crystals:', this.scoreManager.crystals, 'invincible:', this.scoreManager.invincible);
+            if (!this.isRunning || this.lives <= 0) {
+                return;
+            }
             if (this.scoreManager.crystals >= 50 && !this.scoreManager.invincible) {
                 this.scoreManager.crystals -= 50;
                 this.scoreManager.activateInvincibility();
                 this.updateHUD();
-                console.log('✨ Невидимка активирована!');
-            } else {
-                console.warn('⚠️ Невидимка не активирована: crystals < 50 или уже активна');
             }
         });
 
         // Подписка на завершение последней главы
         this.game.events.on('chapter-finished', () => {
-            console.log('🎉 Последняя глава пройдена! Запуск концовки...');
             this.onChapterFinished();
         });
 
@@ -200,12 +213,9 @@ export class GameScene extends Phaser.Scene {
                 crystal.userData.collected = true;
                 this.scoreManager.addCrystal();
                 this.updateHUD();
-                console.log('💎 crystals:', this.scoreManager.crystals);
                 
-                // Звук подбора кристалла
                 this.sound.play('crystal_sound');
                 
-                // Удаляем кристалл из группы и уничтожаем
                 this.crystals.remove(crystal);
                 crystal.destroy();
             }
@@ -833,8 +843,6 @@ export class GameScene extends Phaser.Scene {
         // Если дошёл до последней главы — это всегда хорошая концовка!
         const isGoodEnding = true;
 
-        console.log('🏁 Финал! Кристаллы:', this.scoreManager.crystals, 'Очки:', this.scoreManager.score);
-
         this.scene.stop('UIScene');
         this.scene.stop('GameScene');
 
@@ -848,7 +856,6 @@ export class GameScene extends Phaser.Scene {
 
     updateHUD() {
         const uiScene = this.scene.get('UIScene');
-        console.log('updateHUD called, uiScene:', uiScene);
         if (uiScene) {
             uiScene.updateHUD({
                 lives: this.lives,
@@ -875,8 +882,9 @@ export class GameScene extends Phaser.Scene {
     showChapterTitle() {
         // Показываем название главы
         const chapterData = this.chapterManager.currentChapterData;
+        const chapterTitleSize = getAdaptiveFontSize(40);
         this.chapterTitleText = this.add.text(640, 300, `Глава ${this.chapterManager.currentChapter + 1}\n${chapterData.name}`, {
-            fontSize: '48px',
+            fontSize: `${chapterTitleSize}px`,
             fontFamily: 'Georgia, serif',
             color: '#FFFFFF',
             align: 'center',
@@ -937,8 +945,9 @@ export class GameScene extends Phaser.Scene {
         
         // Показываем название главы
         const chapterData = this.chapterManager.currentChapterData;
+        const chapterTitleSize = getAdaptiveFontSize(40);
         this.chapterTitleText = this.add.text(640, 300, `Глава ${this.chapterManager.currentChapter + 1}\n${chapterData.name}`, {
-            fontSize: '48px',
+            fontSize: `${chapterTitleSize}px`,
             fontFamily: 'Georgia, serif',
             color: '#FFFFFF',
             align: 'center',

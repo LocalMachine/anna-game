@@ -17,15 +17,60 @@
             height: 100%;
             overflow: hidden;
             background: #1a1a2e;
+            touch-action: none; /* Предотвращает зум и скролл на мобильных */
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
         #game {
             display: block;
             margin: 0 auto;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Предупреждение для вертикальной ориентации */
+        #orientation-warning {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-family: 'Georgia, serif';
+        }
+        
+        #orientation-warning.show {
+            display: flex;
+        }
+        
+        #orientation-warning h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        
+        #orientation-warning p {
+            font-size: 18px;
         }
     </style>
 </head>
 <body>
     <div id="game"></div>
+    
+    <!-- Предупреждение для вертикальной ориентации -->
+    <div id="orientation-warning">
+        <div>
+            <h2>📱 Поверните устройство</h2>
+            <p>Для комфортной игры используйте горизонтальную ориентацию</p>
+        </div>
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
     <script type="module" src="src/main.js"></script>
 </body>

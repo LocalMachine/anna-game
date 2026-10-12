@@ -18,7 +18,6 @@ export class InputManager {
         this.keyboard = scene.input.keyboard;
         
         if (!this.keyboard) {
-            console.warn('❌ Keyboard not available');
             return;
         }
 
@@ -135,13 +134,8 @@ export class InputManager {
     }
 
     triggerSlide() {
-        console.log('🔥 triggerSlide called');
-        console.log('scene:', this.scene, 'game:', this.scene.game);
-        // Используем EventBus Phaser.Game
         if (this.scene.game.events) {
             this.scene.game.events.emit('player-slide');
-        } else {
-            console.warn('❌ game.events not available');
         }
         setTimeout(() => { this._isSliding = false; }, 600);
     }
@@ -151,7 +145,6 @@ export class InputManager {
     }
 
     triggerDoubleTap() {
-        console.log('👻 triggerDoubleTap called');
         this.scene.game.events.emit('player-double-tap');
     }
 }
