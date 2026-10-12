@@ -14,22 +14,18 @@ export class MenuScene extends Phaser.Scene {
     create() {
         this.cameras.main.setBackgroundColor(0x87CEEB);
 
-        // Запускаем музыку при первом взаимодействии (из-за политики браузера)
+        // Останавливаем старую музыку при входе в меню
+        this.sound.stopByKey('menu_music');
+        
+        // Запускаем музыку меню
         this.bgMusic = this.sound.add('menu_music', { loop: true, volume: 0.5 });
         
-        let menuMusicStarted = false;
-        const startMenuMusic = () => {
-            if (!menuMusicStarted && this.bgMusic && !this.bgMusic.isPlaying) {
-                menuMusicStarted = true;
+        // Гарантированно запускаем музыку через небольшую задержку
+        this.time.delayedCall(200, () => {
+            if (this.bgMusic && !this.bgMusic.isPlaying) {
                 this.bgMusic.play();
             }
-        };
-        
-        // Запускаем музыку при наведении мыши (без клика)
-        this.input.on('pointermove', startMenuMusic, this);
-        
-        // Также запускаем при нажатии клавиш (кроме пробел и enter, которые запускают игру)
-        this.input.keyboard.on('keydown-TAB', startMenuMusic);
+        });
 
         for (let i = 0; i < 15; i++) {
             const heart = this.add.graphics();

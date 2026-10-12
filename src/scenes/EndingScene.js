@@ -612,8 +612,8 @@ export class EndingScene extends Phaser.Scene {
         // Диалоги (последовательно, последний не исчезает)
         const dialogues = [
             { text: 'Анна входит в зал...', startDelay: 1200, duration: 500, hide: true },
-            { text: 'Король ждёт её с трона', startDelay: 2500, duration: 400, hide: true },
-            { text: '«Очередной скучный бал...»', startDelay: 4500, duration: 800, hide: true },
+            { text: 'Король ждёт её у трона', startDelay: 2900, duration: 400, hide: true },
+            { text: '«Очередной скучный бал...»', startDelay: 5900, duration: 800, hide: true },
         ];
         
         dialogues.forEach((d) => {

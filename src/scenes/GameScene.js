@@ -13,14 +13,15 @@ import { getAdaptiveFontSize, isMobile } from '../utils/adaptive.js';
 export class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
-        this.gameMusic = null;
-        this.invisibilityMusic = null;
     }
 
     shutdown() {
         // Останавливаем всю музыку при завершении сцены
         this.sound.stopByKey('game_music');
         this.sound.stopByKey('invisibility_sound');
+        this.sound.stopByKey('menu_music');
+        this.sound.stopByKey('victory_music');
+        this.sound.stopByKey('gameover_music');
         
         // Отписываемся от событий ввода
         this.game.events.off('player-double-tap');
@@ -134,38 +135,17 @@ export class GameScene extends Phaser.Scene {
         // Подписка на получение урона
         this.game.events.on('player-hit', (data) => this.handleHit(data));
 
-        // Подписка на невидимость
+        // Подписка на невидимость — останавливаем игровую музыку, запускаем звук невидимости
         this.game.events.on('invincibility-start', () => {
-            if (this.gameMusic && this.gameMusic.isPlaying) {
-                this.gameMusic.stop();
-            }
-            this.invisibilityMusic = this.sound.add('invisibility_sound', { loop: true, volume: 0.4 });
-            this.invisibilityMusic.play();
+            this.sound.stopByKey('game_music');
+            this.sound.stopByKey('invisibility_sound');
+            this.sound.play('invisibility_sound');
         });
         
+        // Подписка на окончание невидимости — останавливаем звук невидимости, возобновляем игровую музыку
         this.game.events.on('invincibility-end', () => {
-            if (this.invisibilityMusic) {
-                this.invisibilityMusic.stop();
-                this.invisibilityMusic = null;
-            }
-            if (!this.gameMusic || !this.gameMusic.isPlaying) {
-                this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.6 });
-                this.gameMusic.play();
-            }
-        });
-        
-        // Подписка на окончание невидимости
-        this.game.events.on('invincibility-end', () => {
-            console.log('👻 Режим невидимости закончился!');
-            // Останавливаем звук невидимости и возобновляем игровую музыку
-            if (this.invisibilityMusic) {
-                this.invisibilityMusic.stop();
-                this.invisibilityMusic = null;
-            }
-            if (!this.gameMusic || !this.gameMusic.isPlaying) {
-                this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.6 });
-                this.gameMusic.play();
-            }
+            this.sound.stopByKey('invisibility_sound');
+            this.sound.play('game_music');
         });
 
         // Подписка на двойной тап для активации невидимки
@@ -234,8 +214,7 @@ export class GameScene extends Phaser.Scene {
         this.updateChapterDisplay();
 
         // Запускаем игровую музыку
-        this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.6 });
-        this.gameMusic.play();
+        this.sound.play('game_music');
 
         // Таймер увеличения скорости
         this.speedUpTimer = 0;

@@ -224,7 +224,7 @@ export class UIScene extends Phaser.Scene {
         this.scene.stop('EndingScene');
         this.scene.stop('UIScene');
         
-        // Сбрасываем менеджеры и запускаем заново
+        // Сбрасываем менеджеры и перезапускаем меню
         import('../main.js').then(({ scoreManager, chapterManager }) => {
             scoreManager.reset();
             chapterManager.reset();
