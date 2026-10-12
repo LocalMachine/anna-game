@@ -1,0 +1,16 @@
+{
+  "name": "anna-heart-on-the-run",
+  "version": "0.1.0",
+  "description": "Анна: Сердце в бегах — аркада / бесконечный раннер",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'Prototype mode — no build step needed'"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "serve": "^14.2.0"
+  }
+}

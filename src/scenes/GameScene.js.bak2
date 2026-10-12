@@ -1,0 +1,780 @@
+/**
+ * Основная сцена раннера
+ */
+import { scoreManager, chapterManager, inputManager, saveManager } from '../main.js';
+import { Anna } from '../entities/Anna.js';
+import { Baron } from '../entities/Obstacles/Baron.js';
+import { Knight } from '../entities/Obstacles/Knight.js';
+import { Mage } from '../entities/Obstacles/Mage.js';
+import { Ninja } from '../entities/Obstacles/Ninja.js';
+import { Crystal } from '../entities/Collectibles/Crystal.js';
+
+export class GameScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'GameScene' });
+    }
+
+    create() {
+        // Останавливаем MenuScene чтобы её фон не перекрывал GameScene
+        this.scene.stop('MenuScene');
+        
+        // 1. Create physics groups FIRST
+        this.obstacles = this.physics.add.group();
+        // Очистка флагов при старте
+        this.obstacles.children.each((child) => {
+            if (child && child.userData) {
+                child.userData.hit = false;
+            }
+        });
+
+        this.crystals = this.physics.add.group();        
+        this.potions = this.physics.add.group();
+        
+        // 2. Now we can clear them if needed (though new groups are empty)
+        // Очистка групп препятствий и кристаллов
+        this.obstacles.clear(true, true);
+        this.crystals.clear(true, true);
+        this.potions.clear(true, true);
+
+        // 3. Reset variables
+        this.backgrounds = [];
+        this.ground = null;
+        this.groundY = 600;
+        this.lastChapter = 0;
+        this.speed = 200;
+        this.spawnerTimer = 0;
+        this.crystalSpawnTimer = 0;
+        this.isRunning = true;
+        this.lives = 3;
+        this.chapterTransitionActive = false;
+        this.chapterTransitionTimer = 0;
+        this.chapterTransitionEnded = false;
+        this.isSpawningPaused = false;
+        this.chapterTransitionOverlay = null;
+        this.chapterTitleText = null;
+        this.obstacleCollisionHandler = null;
+        this.mageInstances = [];
+
+        // 4. Apply systems
+        // Применяем данные из систем
+        scoreManager.reset();
+        this.scoreManager = scoreManager;
+        this.chapterManager = chapterManager;
+        this.inputManager = inputManager;
+
+        // 5. Setup ground (земля ДО создания Анны)
+        this.setupGround();
+
+        // 5b. Setup background (небо и декорации)
+        this.setupBackground();
+
+        // 6. Init input
+        // Инициализация ввода (передаём текущую сцену)
+        this.inputManager.init(this);
+
+        // 7. Create Anna — ставим на землю (земля верх на y=600, Анна ноги на y=600)
+        this.anna = new Anna(this, 426, 504);
+        this.anna.userData.hit = false;
+
+        // 8. Collisions — настраиваем ПОСЛЕ создания земли и Анны
+        // Коллизия с землёй
+        this.physics.add.collider(this.anna.sprite, this.ground);
+
+        // Placeholder для звуков (замените на реальные в будущем)
+        this.anna.sounds = {
+            jump: { play: () => {} },
+            slide: { play: () => {} }
+        };
+
+        // Подписка на события ввода
+        this.game.events.on('player-jump', () => {
+            console.log('🦘 player-jump event received');
+            this.anna.jump();
+        });
+        this.game.events.on('player-slide', () => {
+            console.log('🛝 player-slide event received, anna:', this.anna);
+            this.anna.slide();
+        });
+
+        // Подписка на события сбора кристаллов
+        this.game.events.on('crystal-collected', () => {
+            this.scoreManager.addCrystal();
+        });
+
+        // Подписка на получение урона
+        this.game.events.on('player-hit', (data) => this.handleHit(data));
+
+        // Подписка на невидимость
+        this.game.events.on('invincibility-start', () => {
+            console.log('✨ Режим невидимости активирован!');
+        });
+
+        // Запускаем UIScene один раз
+        this.scene.launch('UIScene');
+
+        // Удаляем старую коллизию если есть
+        if (this.obstacleCollisionHandler) {
+            this.obstacleCollisionHandler.destroy();
+            this.obstacleCollisionHandler = null;
+        }
+
+        // Коллизии препятствий
+        this.obstacleCollisionHandler = this.physics.add.collider(this.anna.sprite, this.obstacles, (player, obstacle) => {
+            if (obstacle.userData.hit) return;
+            if (!this.anna.userData.hit && !this.chapterTransitionActive) {
+                obstacle.userData.hit = true;
+                this.scoreManager.loseLife(obstacle);
+            }
+        }, null, this);
+
+        // Сбор кристаллов
+        this.physics.add.overlap(this.anna.sprite, this.crystals, (player, crystal) => {
+            if (!crystal.userData.collected) {
+                crystal.userData.collected = true;
+                this.scoreManager.addCrystal();
+                this.updateHUD();
+                console.log('💎 crystals:', this.scoreManager.crystals);
+                
+                // Удаляем кристалл из группы и уничтожаем
+                this.crystals.remove(crystal);
+                crystal.destroy();
+            }
+        });
+
+        // Коллизия со зельями
+        this.physics.add.collider(this.anna.sprite, this.potions, (player, potion) => {
+            if (!potion.userData.hit) {
+                potion.userData.hit = true;
+                this.scoreManager.loseLife(potion);
+            }
+        });
+
+        // Обновление HUD
+        this.updateHUD();
+        this.updateChapterDisplay();
+
+        // Таймер увеличения скорости
+        this.speedUpTimer = 0;
+
+        // Показываем название первой главы
+        this.time.delayedCall(1000, () => {
+            this.showChapterTitle();
+        });
+    }
+
+    setupBackground() {
+        const bgColors = this.chapterManager.getChapterBackground(
+            this.chapterManager.currentChapter
+        );
+        this.cameras.main.setBackgroundColor(bgColors.top);
+
+        for (let i = this.backgrounds.length - 1; i >= 0; i--) {
+            const bg = this.backgrounds[i];
+            if (bg && bg.active) {
+                this.children.remove(bg);
+                bg.destroy();
+            }
+        }
+        this.backgrounds = [];
+
+        const sky = this.add.graphics();
+        sky.fillGradientStyle(bgColors.top, bgColors.top, bgColors.bottom, bgColors.bottom, 1);
+        sky.fillRect(0, 0, 1280, 720);
+        sky.setDepth(-2);
+
+        for (let i = 0; i < 2; i++) {
+            const bg = this.add.graphics();
+            this.drawBackgroundDecorations(bg, 1280, i * 1280);
+            bg.setDepth(-1);
+            this.backgrounds.push(bg);
+        }
+    }
+
+    setupGround() {
+        if (this.ground) {
+            this.ground.destroy();
+        }
+
+        this.ground = this.add.rectangle(640, 660, 2560, 120, 0x6B5B45);
+        this.physics.add.existing(this.ground);
+        this.ground.body.allowGravity = false;
+        this.ground.body.immovable = true;
+        this.ground.setDepth(1);
+    }
+
+    drawBackgroundDecorations(bg, width, offsetX) {
+    const chapter = this.chapterManager.currentChapter;
+
+    if (chapter === 0) {
+        for (let x = 80; x < width; x += 180) {
+            bg.fillStyle(0x5D4E3D, 0.3);
+            bg.fillRect(x + 3 + offsetX, 360, 30, 240);
+            bg.fillRect(x - 5 + offsetX, 580, 40, 20);
+            bg.fillRect(x + offsetX, 360, 30, 220);
+            bg.fillRect(x - 8 + offsetX, 350, 46, 18);
+            bg.fillRect(x + 5 + offsetX, 370, 4, 200);
+            bg.fillRect(x + 21 + offsetX, 370, 4, 200);
+        }
+        for (let x = 190; x < width; x += 300) {
+            bg.fillStyle(0xFFD54F, 0.3);
+            bg.fillCircle(x + offsetX, 400, 12);
+            bg.lineStyle(2, 0xFFD54F, 0.3);
+            bg.strokeCircle(x + offsetX, 400, 12);
+        }
+    } else if (chapter === 1) {
+        for (let x = 30; x < width; x += 140) {
+            bg.fillStyle(0x4E342E);
+            bg.fillRect(x + 22 + offsetX, 480, 16, 120);
+            bg.fillRect(x + 10 + offsetX, 590, 40, 8);
+            bg.fillCircle(x + 30 + offsetX, 450, 50);
+            bg.fillCircle(x + 20 + offsetX, 470, 40);
+            bg.fillCircle(x + 45 + offsetX, 475, 35);
+            bg.fillCircle(x + 25 + offsetX, 440, 30);
+            bg.fillCircle(x + 40 + offsetX, 455, 25);
+            bg.fillCircle(x + 18 + offsetX, 435, 12);
+            bg.fillCircle(x + 38 + offsetX, 448, 10);
+        }
+        for (let x = 60; x < width; x += 180) {
+            bg.fillStyle(0x1B5E20);
+            bg.fillCircle(x + 20 + offsetX, 590, 25);
+            bg.fillCircle(x + 15 + offsetX, 585, 18);
+            bg.fillCircle(x + 10 + offsetX, 580, 4);
+            bg.fillCircle(x + 28 + offsetX, 588, 3);
+            bg.fillCircle(x + 10 + offsetX, 580, 2);
+        }
+    } else if (chapter === 2) {
+        for (let x = -20; x < width; x += 110) {
+            const h = 140 + Math.abs(Math.sin(x * 0.01)) * 120;
+            const w = 85 + Math.abs(Math.cos(x * 0.02)) * 20;
+            bg.fillRect(x + offsetX, this.groundY - h, w, h);
+            bg.fillRect(x - 5 + offsetX, this.groundY - h - 8, w + 10, 12);
+            bg.moveTo(x - 5 + offsetX, this.groundY - h - 8);
+            bg.lineTo(x + w / 2 + offsetX, this.groundY - h - 30);
+            bg.lineTo(x + w + 5 + offsetX, this.groundY - h - 8);
+            bg.closePath();
+            bg.fillPath();
+            bg.fillStyle(0xFFECB3);
+            const cols = Math.floor(w / 30);
+            for (let c = 0; c < cols; c++) {
+                for (let r = 0; r < 3; r++) {
+                    const wx = x + 10 + c * (w - 20) / Math.max(cols - 1, 1);
+                    const wy = this.groundY - h + 20 + r * 35;
+                    bg.fillRect(wx + offsetX, wy, 14, 18);
+                    bg.fillRect(wx + 6 + offsetX, wy, 2, 18);
+                    bg.fillRect(wx + offsetX, wy + 8, 14, 2);
+                }
+            }
+        }
+    } else if (chapter === 3) {
+        bg.fillStyle(0x455A64);
+        bg.fillTriangle(50 + offsetX, this.groundY, 250 + offsetX, 300, 500 + offsetX, this.groundY);
+        bg.fillTriangle(190 + offsetX, 320, 250 + offsetX, 300, 310 + offsetX, 320);
+        bg.fillTriangle(400 + offsetX, this.groundY, 650 + offsetX, 250, 900 + offsetX, this.groundY);
+        bg.fillTriangle(580 + offsetX, 275, 650 + offsetX, 250, 720 + offsetX, 275);
+        bg.fillTriangle(800 + offsetX, this.groundY, 1000 + offsetX, 320, 1200 + offsetX, this.groundY);
+        bg.fillTriangle(950 + offsetX, 340, 1000 + offsetX, 320, 1050 + offsetX, 340);
+        for (let x = 0; x < width; x += 60) {
+            bg.fillStyle(0xB0BEC5, 0.15);
+            bg.fillCircle(x + 30 + offsetX, this.groundY - 80, 50);
+        }
+    } else if (chapter === 4) {
+        for (let x = 50; x < width; x += 300) {
+            bg.fillStyle(0x5D4037);
+            bg.fillRect(x + 15 + offsetX, 400, 10, 200);
+            bg.fillRect(x + 5 + offsetX, 420, 30, 4);
+            bg.fillRect(x + 10 + offsetX, 380, 25, 4);
+            bg.fillCircle(x + 20 + offsetX, 370, 45);
+            bg.fillCircle(x + 10 + offsetX, 390, 35);
+            bg.fillCircle(x + 35 + offsetX, 385, 30);
+            bg.fillCircle(x + 15 + offsetX, 365, 25);
+            bg.fillCircle(x + 30 + offsetX, 375, 20);
+            bg.fillCircle(x - 10 + offsetX, 420, 3);
+            bg.fillCircle(x + 40 + offsetX, 440, 2);
+            bg.fillCircle(x + 5 + offsetX, 460, 3);
+        }
+        for (let x = 40; x < width; x += 70) {
+            bg.fillStyle(0x4CAF50);
+            bg.fillRect(x + 8 + offsetX, 570, 4, 30);
+            for (let p = 0; p < 5; p++) {
+                const angle = (p / 5) * Math.PI * 2;
+                bg.fillCircle(x + 10 + Math.cos(angle) * 6 + offsetX, 568 + Math.sin(angle) * 6, 4);
+            }
+            bg.fillCircle(x + 10 + offsetX, 568, 3);
+        }
+        for (let i = 0; i < 6; i++) {
+            const bx = 100 + i * 200;
+            const by = 350 + Math.sin(i * 2) * 50;
+            bg.fillStyle([0xFF80AB, 0xEA80FC, 0xB388FF, 0x82B1FF, 0x80D8FF, 0x84FFFF][i]);
+            bg.fillCircle(bx + offsetX, by, 4);
+            bg.fillCircle(bx - 5 + offsetX, by - 3, 4);
+            bg.fillCircle(bx + 5 + offsetX, by - 3, 4);
+        }
+    }
+
+    update(time, delta) {
+        if (!this.isRunning) return;
+
+        // Проверяем нажатия клавиш (JustDown — один раз за нажатие)
+        this.inputManager.update();
+
+        // Движение фона с бесшовным повторением
+        const moveAmount = this.speed * (delta / 1000);
+        this.backgrounds.forEach((bg) => {
+            if (bg && bg.active) {
+                bg.x -= moveAmount;
+            }
+        });
+        
+        // Бесшовное повторение — когда копия уходит за -1280, возвращаем её за вторую копию
+        for (let i = 0; i < this.backgrounds.length; i++) {
+            const bg = this.backgrounds[i];
+            if (bg && bg.active && bg.x <= -1280) {
+                const maxX = Math.max(...this.backgrounds.map(b => b.active ? b.x : -Infinity));
+                bg.x = maxX + 1280;
+            }
+        }
+
+        // Обновление главы
+        this.chapterManager.update(delta);
+        
+        // Проверка смены главы
+        if (this.chapterManager.currentChapter !== this.lastChapter && !this.chapterTransitionActive) {
+            this.lastChapter = this.chapterManager.currentChapter;
+            this.startChapterTransition();
+        }
+        
+        // Обработка перехода главы
+        if (this.chapterTransitionActive) {
+            this.chapterTransitionTimer += delta;
+            if (this.chapterTransitionTimer >= 3000 && !this.chapterTransitionEnded) {
+                this.endChapterTransition();
+            }
+        }
+        
+        // Движение Анны вперёд
+        this.anna.sprite.body.setVelocityX(this.speed);        
+
+        // Увеличение скорости
+        this.speedUpTimer += delta;
+        if (this.speedUpTimer >= 15000) {
+        this.speedUpTimer = 0;
+        this.hudUpdateTimer = 0;
+            this.speed = Math.min(this.speed + 15, 600);
+        }
+
+        // Спавн препятствий (останавливается при показе названия главы)
+        if (!this.isSpawningPaused) {
+            this.spawnerTimer += delta;
+            const spawnInterval = Math.max(1000, 2500 - this.chapterManager.currentChapter * 300);
+            if (this.spawnerTimer >= spawnInterval) {
+                this.spawnerTimer = 0;
+                this.spawnObstacle();
+            }
+        }
+
+        // Спавн кристаллов (тоже останавливается)
+        if (!this.isSpawningPaused) {
+            this.crystalSpawnTimer += delta;
+            if (this.crystalSpawnTimer >= 800) {
+                this.crystalSpawnTimer = 0;
+                this.spawnCrystal();
+            }
+        }
+
+        // Синхронизация graphic с физическими телами
+        this.syncPhysics();
+
+        // Очистка объектов за экраном
+        this.cleanupObjects();
+
+        // Обновление Анны
+        this.anna.update(time, delta);
+
+        // Пассивный набор очков (за расстояние — 1 очко за каждый пройденный пиксель)
+        this.scoreManager.score += Math.floor(this.speed * (delta / 1000));
+
+        // Обновление HUD каждые 100мс
+        this.hudUpdateTimer += delta;
+        if (this.hudUpdateTimer >= 100) {
+            this.hudUpdateTimer = 0;
+            this.updateHUD();
+        }
+    }
+
+    /**
+     * Синхронизирует позицию graphic с физическим телом объекта
+     * Критично: препятствия и кристаллы имеют physics body, но graphic — отдельный объект
+     */
+        syncPhysics() {
+        // Mage летает волнообразно и бросает зелья
+        this.mageInstances.forEach(mage => {
+            if (mage.sprite && mage.sprite.active) {
+                mage.update(this.time.now, 16);
+            }
+        });
+
+        // Кристаллы парят
+        this.crystals.children.each((sprite) => {
+            if (sprite && sprite.active && sprite.userData.isCrystal) {
+                // Анимация пульсации
+                const time = this.time.now;
+                const pulse = 1 + Math.sin(time * 0.005) * 0.15;
+                sprite.setScale(pulse);
+            }
+        });
+    }
+
+    spawnObstacle() {
+        const chapter = this.chapterManager.currentChapter;
+        const y = this.groundY - 80;
+        const knightY = this.groundY - 120; // Рыцари выше — можно проскользнуть под ними
+        const baronY = this.groundY - 40; // Барон ниже — касается земли
+        let obstacle;
+        const rand = Math.random();
+
+        if (chapter === 0) {
+            obstacle = this.obstacles.create(1350, baronY, 'baron');
+        } else if (chapter === 1) {
+            if (rand < 0.5) {
+                obstacle = this.obstacles.create(1350, baronY, 'baron');
+            } else {
+                obstacle = this.obstacles.create(1350, knightY, 'knight');
+            }
+        } else if (chapter === 2) {
+            if (rand < 0.35) {
+                obstacle = this.obstacles.create(1350, baronY, 'baron');
+            } else if (rand < 0.7) {
+                obstacle = this.obstacles.create(1350, knightY, 'knight');
+            } else {
+                // Маг на случайной высоте
+                const mageY = this.groundY - 200 - Math.random() * 200;
+                obstacle = this.obstacles.create(1350, mageY, 'mage');
+            }
+        } else if (chapter === 3) {
+            if (rand < 0.25) {
+                obstacle = this.obstacles.create(1350, baronY, 'baron');
+            } else if (rand < 0.5) {
+                obstacle = this.obstacles.create(1350, knightY, 'knight');
+            } else {
+                // Маг на случайной высоте
+                const mageY = this.groundY - 200 - Math.random() * 200;
+                obstacle = this.obstacles.create(1350, mageY, 'mage');
+            }
+        } else {
+            if (rand < 0.2) {
+                obstacle = this.obstacles.create(1350, baronY, 'baron');
+            } else if (rand < 0.4) {
+                obstacle = this.obstacles.create(1350, knightY, 'knight');
+            } else if (rand < 0.7) {
+                // Маг на случайной высоте
+                const mageY = this.groundY - 200 - Math.random() * 200;
+                obstacle = this.obstacles.create(1350, mageY, 'mage');
+            } else {
+                obstacle = this.obstacles.create(1350, y - 50, 'ninja');
+            }
+        }
+
+        if (obstacle) {
+            obstacle.body.setVelocityX(-this.speed);
+            obstacle.body.setAllowGravity(false);
+            obstacle.body.setBounce(0);
+            obstacle.userData = { isObstacle: true, hit: false };
+            
+            // Создаём экземпляр мага если это маг
+            if (obstacle.texture.key === 'mage') {
+                const mage = new Mage(this, obstacle);
+                this.mageInstances.push(mage);
+            }
+        }
+    }
+
+    spawnCrystal() {
+        const heightVariation = Math.random();
+        let y;
+
+        if (heightVariation < 0.4) {
+            y = this.groundY - 24;
+        } else if (heightVariation < 0.8) {
+            y = this.groundY - 200 - Math.random() * 80;
+        } else {
+            y = this.groundY - 320 - Math.random() * 50;
+        }
+
+        const crystal = this.crystals.create(1350, y, 'crystal');
+        crystal.body.allowGravity = false;
+        crystal.body.setVelocityX(-this.speed);
+        crystal.body.setBounce(0);
+        crystal.userData = { isCrystal: true, collected: false }; // <-- Сброс
+    }
+
+    cleanupObjects() {
+        // Препятствия
+        this.obstacles.children.each((graphic) => {
+            if (graphic && graphic.active) {
+                const parent = graphic.userData.parent;
+                if (parent && parent.isOffScreen()) {
+                    // Начисляем очки за уклонение
+                    this.scoreManager.score += 5;
+                    parent.destroy();
+                    graphic.destroy();
+                }
+            }
+        });
+
+        // Очищаем магов которые улетели
+        this.mageInstances = this.mageInstances.filter(mage => {
+            if (mage.sprite && mage.sprite.active && mage.sprite.x < -100) {
+                // Начисляем очки за уклонение от мага
+                this.scoreManager.score += 5;
+                mage.sprite.destroy();
+                return false;
+            }
+            return true;
+        });
+
+        // Кристаллы
+        this.crystals.children.each((graphic) => {
+            if (graphic && graphic.active) {
+                const parent = graphic.userData.parent;
+                if (parent && (parent.isOffScreen() || parent.collected)) {
+                    if (!parent.collected) parent.destroy();
+                    graphic.destroy();
+                }
+            }
+        });
+
+        // Снаряды — удаляем улетевшие и подбитые
+        this.potions.children.each((potion) => {
+            if (potion && potion.active) {
+                if (potion.x < -100 || potion.userData.hit) {
+                    this.potions.remove(potion);
+                    potion.destroy();
+                }
+            }
+        });
+    }
+
+    handleHit(data) {
+        if (this.lives <= 0) return;
+        if (this.anna.userData.hit) return; // Уже обрабатываем удар
+        
+        this.anna.userData.hit = true;
+        this.lives--;
+        this.updateHUD();
+
+        this.cameras.main.flash(300, 255, 0, 0);
+        this.speed = Math.max(150, this.speed - 50);
+        this.anna.takeHit();
+        
+        // Уничтожаем препятствие
+        if (data && data.obstacle) {
+            data.obstacle.destroy();
+        }
+
+        if (this.lives <= 0) {
+            this.gameOver();
+        }
+
+        this.time.delayedCall(1000, () => {
+            this.anna.userData.hit = false;
+        });
+    }
+
+    gameOver() {
+        this.isRunning = false;
+
+        // Сохранение результата
+        saveManager.saveRun(
+            this.scoreManager.crystals,
+            this.scoreManager.score,
+            this.chapterManager.currentChapter
+        );
+
+        // Проверка концовки
+        const isGoodEnding = this.scoreManager.crystals >= 1000;
+
+        this.time.delayedCall(1000, () => {
+            this.scene.start('EndingScene', {
+                isGoodEnding,
+                crystals: this.scoreManager.crystals,
+                score: this.scoreManager.score,
+                chapter: this.chapterManager.currentChapter
+            });
+        });
+    }
+
+    updateHUD() {
+        const uiScene = this.scene.get('UIScene');
+        console.log('updateHUD called, uiScene:', uiScene);
+        if (uiScene) {
+            uiScene.updateHUD({
+                lives: this.lives,
+                crystals: this.scoreManager.crystals,
+                score: this.scoreManager.score,
+                chapterProgress: this.chapterManager.getChapterProgress(),
+                invincible: this.scoreManager.invincible
+            });
+        }
+    }
+
+    updateChapterDisplay() {
+        const data = this.chapterManager.currentChapterData;
+        const uiScene = this.scene.get('UIScene');
+        if (uiScene && uiScene.active) {
+            uiScene.updateChapterDisplay({
+                chapterName: data.name,
+                chapterIndex: this.chapterManager.currentChapter + 1
+            });
+        }
+    }
+
+    showChapterTitle() {
+        // Показываем название главы
+        const chapterData = this.chapterManager.currentChapterData;
+        this.chapterTitleText = this.add.text(640, 300, `Глава ${this.chapterManager.currentChapter + 1}\n${chapterData.name}`, {
+            fontSize: '48px',
+            fontFamily: 'Georgia, serif',
+            color: '#FFFFFF',
+            align: 'center',
+            stroke: '#000000',
+            strokeThickness: 6
+        }).setOrigin(0.5).setDepth(101);
+        
+        // Анимация появления текста
+        this.chapterTitleText.setScale(0.5);
+        this.chapterTitleText.setAlpha(0);
+        this.tweens.add({
+            targets: this.chapterTitleText,
+            scale: 1,
+            alpha: 1,
+            duration: 600,
+            ease: 'Back.easeOut'
+        });
+        
+        // Скрываем через 2 секунды
+        this.time.delayedCall(2000, () => {
+            if (this.chapterTitleText) {
+                this.tweens.add({
+                    targets: this.chapterTitleText,
+                    alpha: 0,
+                    scale: 1.2,
+                    duration: 500,
+                    ease: 'Power2',
+                    onComplete: () => {
+                        this.chapterTitleText.destroy();
+                        this.chapterTitleText = null;
+                    }
+                });
+            }
+        });
+    }
+
+    startChapterTransition() {
+        this.chapterTransitionActive = true;
+        this.chapterTransitionTimer = 0;
+        this.chapterTransitionEnded = false;
+        
+        // Останавливаем спавн, но не игру
+        this.isSpawningPaused = true;
+        
+        // Создаем оверлей для затухания
+        this.chapterTransitionOverlay = this.add.graphics();
+        this.chapterTransitionOverlay.fillStyle(0x000000, 0);
+        this.chapterTransitionOverlay.fillRect(0, 0, 1280, 720);
+        this.chapterTransitionOverlay.setDepth(100);
+        
+        // Анимация появления оверлея (затухание)
+        this.tweens.add({
+            targets: this.chapterTransitionOverlay,
+            alpha: 0.7,
+            duration: 800,
+            ease: 'Power2'
+        });
+        
+        // Показываем название главы
+        const chapterData = this.chapterManager.currentChapterData;
+        this.chapterTitleText = this.add.text(640, 300, `Глава ${this.chapterManager.currentChapter + 1}\n${chapterData.name}`, {
+            fontSize: '48px',
+            fontFamily: 'Georgia, serif',
+            color: '#FFFFFF',
+            align: 'center',
+            stroke: '#000000',
+            strokeThickness: 6
+        }).setOrigin(0.5).setDepth(101);
+        
+        // Анимация появления текста
+        this.chapterTitleText.setScale(0.5);
+        this.chapterTitleText.setAlpha(0);
+        this.tweens.add({
+            targets: this.chapterTitleText,
+            scale: 1,
+            alpha: 1,
+            duration: 600,
+            ease: 'Back.easeOut',
+            delay: 400
+        });
+        
+        // Через 1.5 секунды сменяем фон
+        this.time.delayedCall(1500, () => {
+            this.setupBackground();
+        });
+    }
+
+    endChapterTransition() {
+        // Если уже завершили, выходим
+        if (this.chapterTransitionEnded) return;
+        this.chapterTransitionEnded = true;
+        
+        // Анимация исчезновения оверлея
+        if (this.chapterTransitionOverlay) {
+            this.tweens.add({
+                targets: this.chapterTransitionOverlay,
+                alpha: 0,
+                duration: 800,
+                ease: 'Power2',
+                onComplete: () => {
+                    this.chapterTransitionOverlay.destroy();
+                    this.chapterTransitionOverlay = null;
+                }
+            });
+        }
+        
+        // Анимация исчезновения текста
+        if (this.chapterTitleText) {
+            this.tweens.add({
+                targets: this.chapterTitleText,
+                alpha: 0,
+                scale: 1.2,
+                duration: 500,
+                ease: 'Power2',
+                onComplete: () => {
+                    this.chapterTitleText.destroy();
+                    this.chapterTitleText = null;
+                }
+            });
+        }
+        
+        // Возобновляем спавн
+        this.time.delayedCall(800, () => {
+            this.isSpawningPaused = false;
+            this.chapterTransitionActive = false;
+            this.chapterTransitionTimer = 0;
+            this.chapterTransitionEnded = false;
+        });
+    }
+
+    pauseGame() {
+        this.scene.pause();
+    }
+
+    resumeGame() {
+        this.scene.resume();
+    }
+
+    destroy() {
+        // Очищаем обработчики ввода
+        if (this.inputManager) {
+            this.inputManager.destroy();
+        }
+    }
+}
